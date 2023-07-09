@@ -5,6 +5,7 @@
 #include "llvm/IR/InstVisitor.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
+#include "llvm/Transforms/Utils/Local.h"
 
 #define DEBUG_TYPE "remove-dead-code"
 
@@ -14,6 +15,21 @@ namespace {
     struct DeadCodeEliminationPass : PassInfoMixin<DeadCodeEliminationPass> {
         PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM) {
             errs() << "Running DeadCodeEliminationPass on function " << F.getName() << "\n";
+
+            bool local_changed;
+            do {
+                local_changed = false;
+                auto dead_inst = std::set<Instruction*>();
+                for (auto I = inst_begin(F); I != inst_end(F); ++I) {
+                    auto inst = &(*I);
+                    if (isInstructionTriviallyDead(inst)) {
+                        dead_inst.insert(inst);
+                    }
+                }
+                for (auto inst : dead_inst) {
+                    RecursivelyDeleteTriviallyDeadInstructions(inst);
+                }
+            } while (local_changed);
 
             return PreservedAnalyses::none();
         }
