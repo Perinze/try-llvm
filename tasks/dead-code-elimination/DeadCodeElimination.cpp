@@ -39,37 +39,81 @@ namespace {
             errs() << "Done\n";
         }
 
+        static void mergeSameSuccessor(BranchInst *BI) {
+            assert(BI->getSuccessor(0) == BI->getSuccessor(1));
+            errs() << *BI << "'s successors branch to the same basic blocks\n";
+            auto newBI = BranchInst::Create(BI->getSuccessor(0));
+            ReplaceInstWithInst(BI, newBI);
+            errs() << "Replaced with unconditional branch instruction\n";
+        }
+
         static void simplifyConditionalBranch(Function &F) {
             errs() << "Simplifying conditional branches that always branch to the same block\n";
             for (auto I = inst_begin(F); I != inst_end(F); ++I) {
                 auto inst = &(*I);
                 if (auto *BI = dyn_cast<BranchInst>(inst)) {
-                    if (BI->getNumSuccessors() == 2) {
-                        errs() << *BI << " has 2 successors\n";
-                        if (BI->getSuccessor(0) == BI->getSuccessor(1)) {
-                            errs() << *BI << "'s successors branch to the same basic blocks\n";
-                            auto newBI = BranchInst::Create(BI->getSuccessor(0));
-                            ReplaceInstWithInst(BI, newBI);
-                            errs() << "Replaced with unconditional branch instruction\n";
-                        }
+                    if (BI->getNumSuccessors() == 2 and BI->getSuccessor(0) == BI->getSuccessor(1)) {
+                        errs() << *BI << " has 2 same successors\n";
+                        mergeSameSuccessor(BI);
                     }
                 }
             }
             errs() << "Done\n";
         }
 
-        static void simplifySingleBranchBlock(Function &F) {
-            errs() << "Blocks that just contain a single unconditional branch instruction to the next block\n";
-            for (auto BBI = F.begin(), E = F.end(); BBI != E; ++BBI) {
-                auto instList = BBI->getInstList();
+        static bool hasOneOnlyUnconditionalBranch(BasicBlock &BB) {
+            errs() << "Checking if " << BB.getName() << " has one only uncond branch\n";
+            if (BB.size() != 1) return false;
+            errs() << "It has only one instruction\n";
+            if (auto *BI = dyn_cast<BranchInst>(&BB.front())) {
+                errs() << "It's branch\n";
+                if (BI->isUnconditional()) {
+                    errs() << "It's uncond\n";
+                    return true;
+                }
             }
+            return false;
+        }
+
+        static void simplifySingleBranchBlock(Function &F) {
+            errs() << "Simplifying bb have one uncond branch only\n";
+            auto pass = 0U;
+            bool changed = false;
+            do {
+                auto toErase = std::set<BasicBlock*>();
+                changed = false;
+                errs() << "Merge pass #" << pass++ << "\n";
+                for (auto & BB : F) {
+                    if (toErase.count(&BB)) continue;
+                    for (auto & I : BB) {
+                        auto inst = &I;
+                        if (auto *BI = dyn_cast<BranchInst>(inst)) {
+                            auto n = BI->getNumSuccessors();
+                            errs() << "Current is a branch instruction with " << n << " successor\n";
+                            for (auto i = 0U; i < n; ++i) {
+                                auto *successorBB = BI->getSuccessor(i);
+                                if (!hasOneOnlyUnconditionalBranch(*successorBB)) continue;
+                                errs() << "Successor #" << i << " has one only uncond branch\n";
+                                BI->setSuccessor(i, successorBB->getUniqueSuccessor());
+                                toErase.insert(successorBB);
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+                errs() << "Cleaning up useless bb\n";
+                for (auto & BB : toErase) {
+                    BB->eraseFromParent();
+                }
+                toErase.clear();
+            } while (changed);
             errs() << "Done\n";
         }
 
         static void simplifyBasicBlock(Function &F) {
             errs() << "Simplifying basic blocks in " << F.getName() << "\n";
             simplifySingleBranchBlock(F);
-            simplifyConditionalBranch(F);
+            //simplifyConditionalBranch(F);
             errs() << "Done\n";
         }
 
