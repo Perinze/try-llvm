@@ -123,11 +123,71 @@ namespace {
             errs() << "Done\n";
         }
 
+        struct StackSlotStore {
+            // bool isAlloca; // unnecessary
+            bool stored;
+            bool loaded;
+            bool passed;
+            StackSlotStore(): stored(false), loaded(false), passed(false) {}
+        };
+
+        static void removeUselessStoreToStackSlot(Function &F) {
+            auto allocaMap = std::map<StringRef, StackSlotStore>();
+            for (auto I = inst_begin(F), E = inst_end(F); I != E; ++I) {
+                auto inst = &(*I);
+                if (auto *AI = dyn_cast<AllocaInst>(inst)) {
+                    errs() << "Alloca " << AI->getValueName() << " " << AI->getValueID() << "\n";
+                    auto value = AI->getValueID();
+                    //if (allocaMap.count(name) == 0) {
+                    //    allocaMap[name] = StackSlotStore();
+                    //}
+                } else if (auto *SI = dyn_cast<StoreInst>(inst)) {
+                }
+            }
+        }
+
+        static void test(Function &F) {
+            for (auto I = inst_begin(F), E = inst_end(F); I != E; ++I) {
+                auto inst = &(*I);
+                if (auto *AI = dyn_cast<AllocaInst>(inst)) {
+                    errs() << "Is AllocaInst: " << *AI << "\n";
+                    errs() << "Value: " << AI->getValueName() << " : " << AI->getValueID() << "\n";
+                } else if (auto *SI = dyn_cast<StoreInst>(inst)) {
+                    errs() << "Is StoreInst: " << *SI << "\n";
+                    auto n = SI->getNumOperands();
+                    errs() << "Operand number: " << n << "\n";
+                    for (auto i = 0U; i < n; ++i) {
+                        errs() << "Operand " << i << ": " << SI->getOperand(i) << "\n";
+                    }
+                    if (auto *OpAI = dyn_cast<AllocaInst>(SI->getOperand(1))) {
+                        errs() << "Operand 1 is a alloca inst\n";
+                        errs() << "It's value name and id : " << OpAI->getValueName() << " " << OpAI->getValueID() << "\n";
+                    }
+                } else if (auto *LI = dyn_cast<LoadInst>(inst)) {
+                    errs() << "Is LoadInst: " << *LI << "\n";
+                    auto n = LI->getNumOperands();
+                    errs() << "Operand number: " << n << "\n";
+                    for (auto i = 0U; i < n; ++i) {
+                        errs() << "Operand " << i << ": " << LI->getOperand(i) << "\n";
+                    }
+                    if (auto *OpAI = dyn_cast<AllocaInst>(LI->getOperand(0))) {
+                        errs() << "Operand 0 is a alloca inst\n";
+                        errs() << "It's value name and id : " << OpAI->getValueName() << " " << OpAI->getValueID() << "\n";
+                    }
+                }
+                errs() << "\n";
+            }
+        }
+
         PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM) {
             errs() << "Running DeadCodeEliminationPass on function " << F.getName() << "\n";
 
+            test(F);
+            return PreservedAnalyses::none();
+
             deleteTriviallyDeadInstruction(F);
             simplifyBasicBlock(F);
+            removeUselessStoreToStackSlot(F);
 
             return PreservedAnalyses::none();
         }
