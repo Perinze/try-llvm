@@ -49,15 +49,21 @@ namespace {
 
         static void simplifyConditionalBranch(Function &F) {
             errs() << "Simplifying conditional branches that always branch to the same block\n";
-            for (auto I = inst_begin(F); I != inst_end(F); ++I) {
-                auto inst = &(*I);
-                if (auto *BI = dyn_cast<BranchInst>(inst)) {
-                    if (BI->getNumSuccessors() == 2 and BI->getSuccessor(0) == BI->getSuccessor(1)) {
-                        errs() << *BI << " has 2 same successors\n";
-                        mergeSameSuccessor(BI);
+            bool changed = false;
+            do {
+                changed = false;
+                for (auto I = inst_begin(F); I != inst_end(F); ++I) {
+                    auto inst = &(*I);
+                    if (auto *BI = dyn_cast<BranchInst>(inst)) {
+                        if (BI->getNumSuccessors() == 2 and BI->getSuccessor(0) == BI->getSuccessor(1)) {
+                            errs() << *BI << " has 2 same successors\n";
+                            mergeSameSuccessor(BI);
+                            changed = true;
+                            break;
+                        }
                     }
                 }
-            }
+            } while (changed);
             errs() << "Done\n";
         }
 
@@ -113,7 +119,7 @@ namespace {
         static void simplifyBasicBlock(Function &F) {
             errs() << "Simplifying basic blocks in " << F.getName() << "\n";
             simplifySingleBranchBlock(F);
-            //simplifyConditionalBranch(F);
+            simplifyConditionalBranch(F);
             errs() << "Done\n";
         }
 
